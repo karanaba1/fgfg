@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oran Analiz Sistemi</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .kutu { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 950px; text-align: center; box-sizing: border-box; }
+        .input-grup { display: flex; justify-content: center; gap: 10px; margin-bottom: 5px; flex-wrap: wrap; }
+        input { padding: 12px; border: 1px solid #ccc; border-radius: 6px; width: 100px; font-size: 16px; text-align: center; box-sizing: border-box; }
+        button { padding: 12px 25px; background: #10b981; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; transition: 0.2s; box-sizing: border-box; }
+        button:hover { background: #059669; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: center; font-size: 14px; }
+        th { background-color: #f8f9fa; font-weight: 600; }
+        .uyari { color: #d97706; font-size: 14px; margin-bottom: 15px; }
+        .not { color: #4b5563; font-size: 12px; margin-bottom: 20px; font-style: italic; }
+
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .kutu { padding: 15px; border-radius: 8px; }
+            .input-grup { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: 100%; }
+            input { width: 100% !important; }
+            button { grid-column: span 2; width: 100%; }
+            table, thead, tbody, th, td, tr { display: block; }
+            thead { display: none; }
+            tr { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 15px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+            td { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding: 10px 5px; text-align: right; }
+            td:last-child { border-bottom: none; }
+            td::before { content: attr(data-label); font-weight: 600; color: #64748b; text-align: left; margin-right: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="kutu">
+        <h2>Geçmiş Maç Oran Analizi</h2>
+        <div class="uyari" id="bilgiMesaji">Aranacak oranları girin. (Küsüratlar için nokta kullanın, Örn: 1.50)</div>
+        
+        <div class="input-grup">
+            <input type="number" id="oran_ms1" step="0.01" placeholder="MS 1">
+            <input type="number" id="oran_ms2" step="0.01" placeholder="MS 2">
+            <input type="number" id="oran_ust" step="0.01" placeholder="2.5 Üst">
+            <input type="number" id="oran_ust35" step="0.01" placeholder="3.5 Üst">
+            <button onclick="analizEt()">Analiz Et</button>
+        </div>
+        <div class="not"><b>İpucu:</b> Sadece MS 1 ve MS 2 girerek arama yapabilirsiniz. Dilerseniz 2.5 Üst veya 3.5 Üst oranlarını da ekleyerek filtreyi daraltabilirsiniz.</div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Lig</th>
+                    <th>Ev Sahibi Takım</th>
+                    <th>Deplasman Takım</th>
+                    <th>İY / MS</th>
+                    <th>MS 1</th>
+                    <th>MS 2</th>
+                    <th>2.5 Üst</th>
+                    <th>3.5 Üst</th>
+                </tr>
+            </thead>
+            <tbody id="sonuclar">
+                <tr><td colspan="8">Sonuçlar burada görünecek...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Sizin bilgileriniz tamamen içine yerleştirildi!
+        const SUPABASE_URL = 'https://ijtajwtjdkzkzvfqeyd.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_SjuTpOghccyCKtC6PQQpOA_3Zln5T0c';
+        
+        // Çakışmayı önleyen güvenli bağlantı değişkeni
+        const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // -- TAM OLARAK ŞEMADAN DÜZELTTİĞİNİZ SÜTUN İSİMLERİ --
+        const TABLO_ADI = 'mac gecmisi'; 
+        const SUTUN_MS1 = 'Maç Sonucu 1'; 
+        const SUTUN_MS2 = 'Maç Sonucu 2';
+        const SUTUN_UST = '2,5 Alt/Üst Üst';
+        const SUTUN_UST35 = '3,5 Alt/Üst Üst';
+        
+        const SUTUN_LIG = 'Lig';
+        const SUTUN_EV = 'Ev Sahibi Takım';
+        const SUTUN_DEP = 'Deplasman';
+        const SUTUN_IY = 'İLK Y,'; 
+        const SUTUN_MS = 'MS';
+
+        async function analizEt() {
+            const ms1 = parseFloat(document.getElementById('oran_ms1').value);
+            const ms2 = parseFloat(document.getElementById('oran_ms2').value);
+            const ust = parseFloat(document.getElementById('oran_ust').value);
+            const ust35 = parseFloat(document.getElementById('oran_ust35').value);
+            
+            const sonucAlani = document.getElementById('sonuclar');
+            const bilgiMesaji = document.getElementById('bilgiMesaji');
+
+            // Temel kontrol: MS 1 ve MS 2 her durumda zorunludur
+            if (isNaN(ms1) || isNaN(ms2)) {
+                alert("Lütfen en az MS 1 ve MS 2 oranlarını girin!"); 
+                return;
+            }
+
+            const hasUst = !isNaN(ust);
+            const hasUst35 = !isNaN(ust35);
+
+            sonucAlani.innerHTML = "<tr><td colspan='8'>Maçlar aranıyor... Lütfen bekleyin.</td></tr>";
+            bilgiMesaji.innerHTML = "";
+
+            try {
+                // 1. Önce BİREBİR eşleşen var mı diye bakıyoruz
+                let query = db.from(TABLO_ADI).select('*').eq(SUTUN_MS1, ms1).eq(SUTUN_MS2, ms2);
+                
+                if (hasUst) {
+                    query = query.eq(SUTUN_UST, ust);
+                } else if (hasUst35) {
+                    query = query.eq(SUTUN_UST35, ust35);
+                }
+                
+                let { data, error } = await query.limit(15);
+
+                if (error) throw error;
+
+                // 2. Birebir eşleşme yoksa (data boşsa)
+                if (!data || data.length === 0) {
+                    // Eğer Alt/Üst oranlarından en az biri girildiyse en yakın oranı bul (RPC ile)
+                    if (hasUst || hasUst35) {
+                        bilgiMesaji.innerHTML = "Birebir oran bulunamadı! En yakın oranlı maçlar listeleniyor...";
+                        
+                        const res = await db.rpc('yakin_oran_getir', {
+                            g_ms1: ms1,
+                            g_ms2: ms2,
+                            g_ust: hasUst ? ust : null,
+                            g_ust35: hasUst35 ? ust35 : null
+                        });
+                        
+                        if (res.error) throw res.error;
+                        data = res.data;
+                    } else {
+                        // Eğer Alt/Üst girilmediyse en yakın hesabı yapamayız, direkt sonuç yok diyoruz
+                        sonucAlani.innerHTML = "<tr><td colspan='8'>Girdiğiniz MS 1 ve MS 2 oranlarına sahip birebir eşleşen maç bulunamadı.</td></tr>";
+                        bilgiMesaji.innerHTML = "Sonuç yok.";
+                        return;
+                    }
+                } else {
+                    bilgiMesaji.innerHTML = "<span style='color:green;'>Birebir eşleşen oranlar bulundu!</span>";
+                }
+
+                // 3. Sonuçları Ekrana Yazdır
+                if (data && data.length > 0) {
+                    let html = '';
+                    data.forEach(mac => {
+                        html += `<tr>
+                            <td data-label="Lig">${mac[SUTUN_LIG] || ''}</td>
+                            <td data-label="Ev Sahibi Takım"><b>${mac[SUTUN_EV]}</b></td>
+                            <td data-label="Deplasman Takım"><b>${mac[SUTUN_DEP]}</b></td>
+                            <td data-label="İY / MS">İY: ${mac[SUTUN_IY] || '-'} / <b style="color:#e11d48;">MS: ${mac[SUTUN_MS] || '-'}</b></td>
+                            <td data-label="MS 1">${mac[SUTUN_MS1]}</td>
+                            <td data-label="MS 2">${mac[SUTUN_MS2]}</td>
+                            <td data-label="2.5 Üst">${mac[SUTUN_UST] || '-'}</td>
+                            <td data-label="3.5 Üst">${mac[SUTUN_UST35] || '-'}</td>
+                        </tr>`;
+                    });
+                    sonucAlani.innerHTML = html;
+                } else {
+                    sonucAlani.innerHTML = "<tr><td colspan='8'>Birebir eşleşen veya yakın hiçbir maç bulunamadı.</td></tr>";
+                    bilgiMesaji.innerHTML = "Sonuç yok.";
+                }
+
+            } catch (err) {
+                console.error("Hata:", err);
+                sonucAlani.innerHTML = `<tr><td colspan='8' style='color:red;'>Bir hata oluştu. Lütfen veritabanı ayarlarınızı kontrol edin.</td></tr>`;
+            }
+        }
+    </script>
+</body>
+</html>
