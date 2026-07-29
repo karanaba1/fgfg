@@ -68,14 +68,11 @@
     </div>
 
     <script>
-        // Sizin bilgileriniz tamamen içine yerleştirildi!
-        const SUPABASE_URL = 'https://ijtajwtjdjkzkzvfqeyd.supabase.co';
+        const SUPABASE_URL = 'https://ijtajwtjdkzkzvfqeyd.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqdGFqd3RqZGpremt6dmZxZXlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyNzE4MjMsImV4cCI6MjEwMDg0NzgyM30.UZmsnjAktFiiFSe5YXVFhNX1Y1-GuNr3q80l0SbBMFo';
         
-        // Çakışmayı önleyen güvenli bağlantı değişkeni
         const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // -- TAM OLARAK ŞEMADAN DÜZELTTİĞİNİZ SÜTUN İSİMLERİ --
         const TABLO_ADI = 'mac gecmisi'; 
         const SUTUN_MS1 = 'Maç Sonucu 1'; 
         const SUTUN_MS2 = 'Maç Sonucu 2';
@@ -97,7 +94,6 @@
             const sonucAlani = document.getElementById('sonuclar');
             const bilgiMesaji = document.getElementById('bilgiMesaji');
 
-            // Temel kontrol: MS 1 ve MS 2 her durumda zorunludur
             if (isNaN(ms1) || isNaN(ms2)) {
                 alert("Lütfen en az MS 1 ve MS 2 oranlarını girin!"); 
                 return;
@@ -110,46 +106,25 @@
             bilgiMesaji.innerHTML = "";
 
             try {
-                // 1. Önce BİREBİR eşleşen var mı diye bakıyoruz
-                let query = db.from(TABLO_ADI).select('*').eq(SUTUN_MS1, ms1).eq(SUTUN_MS2, ms2);
+                // Doğrudan veritabanı üzerindeki akıllı fonksiyonumuzu (RPC) çağırıyoruz!
+                const res = await db.rpc('yakin_oran_getir', {
+                    g_ms1: ms1,
+                    g_ms2: ms2,
+                    g_ust: hasUst ? ust : null,
+                    g_ust35: hasUst35 ? ust35 : null
+                });
                 
-                if (hasUst) {
-                    query = query.eq(SUTUN_UST, ust);
-                } else if (hasUst35) {
-                    query = query.eq(SUTUN_UST35, ust35);
-                }
-                
-                let { data, error } = await query.limit(15);
+                if (res.error) throw res.error;
+                let data = res.data;
 
-                if (error) throw error;
-
-                // 2. Birebir eşleşme yoksa (data boşsa)
-                if (!data || data.length === 0) {
-                    // Eğer Alt/Üst oranlarından en az biri girildiyse en yakın oranı bul (RPC ile)
-                    if (hasUst || hasUst35) {
-                        bilgiMesaji.innerHTML = "Birebir oran bulunamadı! En yakın oranlı maçlar listeleniyor...";
-                        
-                        const res = await db.rpc('yakin_oran_getir', {
-                            g_ms1: ms1,
-                            g_ms2: ms2,
-                            g_ust: hasUst ? ust : null,
-                            g_ust35: hasUst35 ? ust35 : null
-                        });
-                        
-                        if (res.error) throw res.error;
-                        data = res.data;
-                    } else {
-                        // Eğer Alt/Üst girilmediyse en yakın hesabı yapamayız, direkt sonuç yok diyoruz
-                        sonucAlani.innerHTML = "<tr><td colspan='8'>Girdiğiniz MS 1 ve MS 2 oranlarına sahip birebir eşleşen maç bulunamadı.</td></tr>";
-                        bilgiMesaji.innerHTML = "Sonuç yok.";
-                        return;
-                    }
-                } else {
-                    bilgiMesaji.innerHTML = "<span style='color:green;'>Birebir eşleşen oranlar bulundu!</span>";
-                }
-
-                // 3. Sonuçları Ekrana Yazdır
+                // Sonuçları Ekrana Yazdır
                 if (data && data.length > 0) {
+                    if (hasUst || hasUst35) {
+                        bilgiMesaji.innerHTML = "Analiz tamamlandı. En yakın oranlı maçlar listeleniyor...";
+                    } else {
+                        bilgiMesaji.innerHTML = "<span style='color:green;'>Birebir eşleşen oranlar bulundu!</span>";
+                    }
+
                     let html = '';
                     data.forEach(mac => {
                         html += `<tr>
@@ -165,7 +140,7 @@
                     });
                     sonucAlani.innerHTML = html;
                 } else {
-                    sonucAlani.innerHTML = "<tr><td colspan='8'>Birebir eşleşen veya yakın hiçbir maç bulunamadı.</td></tr>";
+                    sonucAlani.innerHTML = "<tr><td colspan='8'>Girdiğiniz MS 1 ve MS 2 oranlarına sahip hiçbir maç bulunamadı.</td></tr>";
                     bilgiMesaji.innerHTML = "Sonuç yok.";
                 }
 
